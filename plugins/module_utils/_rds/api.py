@@ -256,9 +256,7 @@ def update_iam_roles(
 
 
 @AWSRetry.jittered_backoff()
-def describe_db_cluster_parameter_groups(
-    module, connection: Any, group_name: Optional[str]
-) -> List[Dict[str, Any]]:
+def describe_db_cluster_parameter_groups(module, connection: Any, group_name: Optional[str]) -> List[Dict[str, Any]]:
     result = []
     try:
         params = {}
@@ -274,9 +272,7 @@ def describe_db_cluster_parameter_groups(
 
 
 @AWSRetry.jittered_backoff()
-def describe_db_instance_parameter_groups(
-    connection: Any, module, db_parameter_group_name: str = None
-) -> List[dict]:
+def describe_db_instance_parameter_groups(connection: Any, module, db_parameter_group_name: str = None) -> List[dict]:
     try:
         if db_parameter_group_name:
             result = connection.describe_db_parameter_groups(DBParameterGroupName=db_parameter_group_name)[

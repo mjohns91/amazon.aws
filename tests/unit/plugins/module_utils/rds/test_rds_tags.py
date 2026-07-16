@@ -67,7 +67,9 @@ class TestEnsureTags:
         client = MagicMock()
         module = MagicMock()
 
-        result = ensure_tags(client, module, "arn:aws:rds:us-east-1:123456789012:db:my-db", {"Name": "test"}, None, True)
+        result = ensure_tags(
+            client, module, "arn:aws:rds:us-east-1:123456789012:db:my-db", {"Name": "test"}, None, True
+        )
 
         assert result is False
         m_call_method.assert_not_called()

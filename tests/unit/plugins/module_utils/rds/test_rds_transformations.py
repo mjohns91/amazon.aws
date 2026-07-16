@@ -14,9 +14,7 @@ from ansible_collections.amazon.aws.plugins.module_utils.rds import compare_iam_
 from ansible_collections.amazon.aws.plugins.module_utils.rds import format_rds_client_method_parameters
 
 if not HAS_BOTO3:
-    pytestmark = pytest.mark.skip(
-        "test_rds_transformations.py requires the python modules 'boto3' and 'botocore'"
-    )
+    pytestmark = pytest.mark.skip("test_rds_transformations.py requires the python modules 'boto3' and 'botocore'")
 
 mod_transformations = "ansible_collections.amazon.aws.plugins.module_utils._rds.transformations"
 
@@ -86,9 +84,7 @@ def test_format_rds_client_method_parameters_success(
         ["RequiredParameter", "OptionalParameter", "Tags"],
     ]
 
-    assert (
-        format_rds_client_method_parameters(client, module, provided_params, "mock_method", format_tags) == expected
-    )
+    assert format_rds_client_method_parameters(client, module, provided_params, "mock_method", format_tags) == expected
 
 
 @pytest.mark.parametrize(
