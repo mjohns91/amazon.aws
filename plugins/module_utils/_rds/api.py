@@ -90,6 +90,22 @@ def get_final_identifier(method_name: str, module) -> str:
     return identifier
 
 
+_NOOP_ERRORS = [
+    (("modify_db_instance", "modify_db_cluster"), "InvalidParameterCombination", "No modifications were requested"),
+    (("promote_read_replica",), "InvalidDBInstanceState", "DB Instance is not a read replica"),
+    (("promote_read_replica_db_cluster",), "InvalidDBClusterStateFault", "DB Cluster that is not a read replica"),
+]
+
+_SPECIAL_ERRORS = [
+    (
+        ("modify_db_instance", "modify_db_cluster"),
+        "InvalidParameterCombination",
+        "ModifyDbCluster API",
+        "It appears you are trying to modify attributes that are managed at the cluster level. Please see rds_cluster",
+    ),
+]
+
+
 def handle_errors(module, exception: Any, method_name: str, parameters: Dict[str, Any]) -> bool:
     """
     Fails the module with an appropriate error message given the provided exception.
@@ -107,55 +123,30 @@ def handle_errors(module, exception: Any, method_name: str, parameters: Dict[str
     if not isinstance(exception, ClientError):
         module.fail_json_aws(exception, msg=f"Unexpected failure for method {method_name} with parameters {parameters}")
 
-    changed = True
     error_code = exception.response["Error"]["Code"]
-    if method_name in ("modify_db_instance", "modify_db_cluster") and error_code == "InvalidParameterCombination":
-        if "No modifications were requested" in to_text(exception):
-            changed = False
-        elif "ModifyDbCluster API" in to_text(exception):
-            module.fail_json_aws(
-                exception,
-                msg="It appears you are trying to modify attributes that are managed at the cluster level. Please see rds_cluster",
-            )
-        else:
-            module.fail_json_aws(
-                exception,
-                msg=f"Unable to {get_rds_method_attribute(method_name, module).operation_description}",
-            )
-    elif method_name == "promote_read_replica" and error_code == "InvalidDBInstanceState":
-        if "DB Instance is not a read replica" in to_text(exception):
-            changed = False
-        else:
-            module.fail_json_aws(
-                exception,
-                msg=f"Unable to {get_rds_method_attribute(method_name, module).operation_description}",
-            )
-    elif method_name == "promote_read_replica_db_cluster" and error_code == "InvalidDBClusterStateFault":
-        if "DB Cluster that is not a read replica" in to_text(exception):
-            changed = False
-        else:
-            module.fail_json_aws(
-                exception,
-                msg=f"Unable to {get_rds_method_attribute(method_name, module).operation_description}",
-            )
-    elif method_name == "create_db_cluster" and error_code == "InvalidParameterValue":
+    error_text = to_text(exception)
+
+    for methods, code, message in _NOOP_ERRORS:
+        if method_name in methods and error_code == code and message in error_text:
+            return False
+
+    for methods, code, message, custom_msg in _SPECIAL_ERRORS:
+        if method_name in methods and error_code == code and message in error_text:
+            module.fail_json_aws(exception, msg=custom_msg)
+            return True
+
+    if method_name == "create_db_cluster" and error_code == "InvalidParameterValue":
         accepted_engines = ["aurora", "aurora-mysql", "aurora-postgresql", "mysql", "postgres"]
         if parameters.get("Engine") not in accepted_engines:
             module.fail_json_aws(
                 exception, msg=f"DB engine {parameters.get('Engine')} should be one of {accepted_engines}"
             )
-        else:
-            module.fail_json_aws(
-                exception,
-                msg=f"Unable to {get_rds_method_attribute(method_name, module).operation_description}",
-            )
-    else:
-        module.fail_json_aws(
-            exception,
-            msg=f"Unable to {get_rds_method_attribute(method_name, module).operation_description}",
-        )
+            return True
 
-    return changed
+    module.fail_json_aws(
+        exception,
+        msg=f"Unable to {get_rds_method_attribute(method_name, module).operation_description}",
+    )
 
 
 def call_method(client, module, method_name: str, parameters: Dict[str, Any]) -> Tuple[Any, bool]:
