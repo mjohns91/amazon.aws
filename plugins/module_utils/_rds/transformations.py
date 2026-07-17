@@ -41,7 +41,7 @@ def arg_spec_to_rds_params(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         ("Ca", "CA"),
         ("PerformanceInsightsKmsKeyId", "PerformanceInsightsKMSKeyId"),
     )
-    for key in list(camel_options.keys()):
+    for key in camel_options.copy():
         for old, new in aws_replace_keys:
             if old in key:
                 camel_options[key.replace(old, new)] = camel_options.pop(key)
@@ -82,7 +82,7 @@ def format_rds_client_method_parameters(
         method_description = get_rds_method_attribute(method_name, module).operation_description
         module.fail_json(msg=f"To {method_description} requires the parameters: {required_options}")
     options = get_boto3_client_method_parameters(client, method_name)
-    parameters = dict((k, v) for k, v in parameters.items() if k in options and v is not None)
+    parameters = {k: v for k, v in parameters.items() if k in options and v is not None}
     if format_tags and parameters.get("Tags"):
         parameters["Tags"] = ansible_dict_to_boto3_tag_list(parameters["Tags"])
 
@@ -104,7 +104,7 @@ def compare_iam_roles(
             roles_to_add (list): List of IAM roles to add
             roles_to_delete (list): List of IAM roles to delete
     """
-    existing_roles = [dict((k, v) for k, v in role.items() if k != "status") for role in existing_roles]
+    existing_roles = [{k: v for k, v in role.items() if k != "status"} for role in existing_roles]
     roles_to_add = [role for role in target_roles if role not in existing_roles]
     roles_to_remove = [role for role in existing_roles if role not in target_roles] if purge_roles else []
     return roles_to_add, roles_to_remove
