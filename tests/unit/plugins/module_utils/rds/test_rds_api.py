@@ -15,9 +15,12 @@ except ImportError:
     pass
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import HAS_BOTO3
+from ansible_collections.amazon.aws.plugins.module_utils.rds import Boto3ClientMethod
+from ansible_collections.amazon.aws.plugins.module_utils.rds import call_method
 from ansible_collections.amazon.aws.plugins.module_utils.rds import get_final_identifier
 from ansible_collections.amazon.aws.plugins.module_utils.rds import get_snapshot
 from ansible_collections.amazon.aws.plugins.module_utils.rds import handle_errors
+from ansible_collections.amazon.aws.plugins.module_utils.rds import update_iam_roles
 
 if not HAS_BOTO3:
     pytestmark = pytest.mark.skip("test_rds_api.py requires the python modules 'boto3' and 'botocore'")
@@ -287,3 +290,197 @@ def test_get_snapshot_error():
     with pytest.raises(ValueError) as e:
         get_snapshot(client, "my-snapshot", "bad parameter")
     assert "Invalid snapshot_type. Expected one of: ('cluster', 'instance')" in str(e)
+
+
+# =============================================================================
+# get_final_identifier — cluster_snapshot path
+# =============================================================================
+
+
+def test__get_final_identifier_cluster_snapshot():
+    module = MagicMock()
+    module.params = {"db_cluster_snapshot_identifier": "my-cluster-snap", "new_db_cluster_identifier": "x"}
+    module.check_mode = False
+
+    assert get_final_identifier("create_db_cluster_snapshot", module) == "my-cluster-snap"
+
+
+def test__get_final_identifier_check_mode_ignores_updated():
+    module = MagicMock()
+    module.params = {
+        "db_instance_identifier": "original",
+        "new_db_instance_identifier": "updated",
+        "apply_immediately": True,
+    }
+    module.check_mode = True
+
+    assert get_final_identifier("create_db_instance", module) == "original"
+
+
+def test__get_final_identifier_unsupported_method():
+    module = MagicMock()
+    module.params = {"wait": False}
+
+    with pytest.raises(NotImplementedError):
+        get_final_identifier("unsupported_method", module)
+
+
+# =============================================================================
+# handle_errors — additional paths
+# =============================================================================
+
+
+def test__handle_errors_botocore_error():
+    module = MagicMock()
+    module.fail_json_aws.side_effect = SystemExit(1)
+    exception = botocore.exceptions.BotoCoreError()
+
+    with pytest.raises(SystemExit):
+        handle_errors(module, exception, "some_method", {"Param": "value"})
+
+    module.fail_json_aws.assert_called_once()
+    assert "Unexpected failure" in module.fail_json_aws.call_args[1]["msg"]
+
+
+def test__handle_errors_modify_db_cluster():
+    exception = build_exception(
+        "modify_db_cluster",
+        code="InvalidParameterCombination",
+        message="No modifications were requested",
+    )
+    assert handle_errors(MagicMock(), exception, "modify_db_cluster", {}) is False
+
+
+def test__handle_errors_generic_error_code():
+    module = MagicMock()
+    module.fail_json_aws.side_effect = SystemExit(1)
+    module.params = {"new_db_instance_identifier": "test"}
+    exception = build_exception("delete_db_instance", code="SomeRandomError")
+
+    with pytest.raises(SystemExit):
+        handle_errors(module, exception, "delete_db_instance", {})
+
+    module.fail_json_aws.assert_called_once()
+    assert "Unable to" in module.fail_json_aws.call_args[1]["msg"]
+
+
+def test__handle_errors_create_cluster_valid_engine():
+    module = MagicMock()
+    module.fail_json_aws.side_effect = SystemExit(1)
+    module.params = {"new_db_cluster_identifier": "test"}
+    exception = build_exception("create_db_cluster", code="InvalidParameterValue")
+
+    with pytest.raises(SystemExit):
+        handle_errors(module, exception, "create_db_cluster", {"Engine": "aurora-mysql"})
+
+    module.fail_json_aws.assert_called_once()
+    assert "Unable to" in module.fail_json_aws.call_args[1]["msg"]
+
+
+# =============================================================================
+# call_method
+# =============================================================================
+
+
+@patch(mod_api + ".get_rds_method_attribute")
+def test__call_method_check_mode(m_get_attr):
+    client = MagicMock()
+    module = MagicMock()
+    module.check_mode = True
+
+    result, changed = call_method(client, module, "create_db_instance", {"DBInstanceIdentifier": "test"})
+
+    assert result == {}
+    assert changed is True
+    m_get_attr.assert_not_called()
+
+
+@patch(mod_api + ".wait_for_status")
+@patch(mod_api + ".get_rds_method_attribute")
+def test__call_method_success_no_wait(m_get_attr, m_wait):
+    m_get_attr.return_value = Boto3ClientMethod("create_db_instance", "", "create DB instance", "instance", [])
+    client = MagicMock()
+    client.create_db_instance.return_value = {"DBInstance": {"DBInstanceIdentifier": "test"}}
+    module = MagicMock()
+    module.check_mode = False
+    module.params = {"wait": False}
+
+    result, changed = call_method(client, module, "create_db_instance", {"DBInstanceIdentifier": "test"})
+
+    assert changed is True
+    m_wait.assert_not_called()
+
+
+@patch(mod_api + ".get_final_identifier")
+@patch(mod_api + ".wait_for_status")
+@patch(mod_api + ".get_rds_method_attribute")
+def test__call_method_success_with_wait(m_get_attr, m_wait, m_get_final):
+    m_get_attr.return_value = Boto3ClientMethod("create_db_instance", "", "create DB instance", "instance", [])
+    m_get_final.return_value = "test"
+    client = MagicMock()
+    client.create_db_instance.return_value = {"DBInstance": {"DBInstanceIdentifier": "test"}}
+    module = MagicMock()
+    module.check_mode = False
+    module.params = {"wait": True}
+
+    result, changed = call_method(client, module, "create_db_instance", {"DBInstanceIdentifier": "test"})
+
+    assert changed is True
+    m_wait.assert_called_once_with(client, module, "test", "create_db_instance")
+
+
+@patch(mod_api + ".handle_errors")
+@patch(mod_api + ".get_rds_method_attribute")
+def test__call_method_error_delegates_to_handle_errors(m_get_attr, m_handle):
+    m_get_attr.return_value = Boto3ClientMethod("modify_db_instance", "", "modify DB instance", "instance", [])
+    m_handle.return_value = False
+    client = MagicMock()
+    client.modify_db_instance.side_effect = botocore.exceptions.ClientError(
+        {"Error": {"Code": "InvalidParameterCombination", "Message": "No modifications were requested"}},
+        "ModifyDBInstance",
+    )
+    module = MagicMock()
+    module.check_mode = False
+    module.params = {"wait": False}
+
+    result, changed = call_method(client, module, "modify_db_instance", {"DBInstanceIdentifier": "test"})
+
+    assert changed is False
+    m_handle.assert_called_once()
+
+
+# =============================================================================
+# update_iam_roles
+# =============================================================================
+
+
+@patch(mod_api + ".call_method")
+def test__update_iam_roles_add_and_remove(m_call_method):
+    m_call_method.return_value = ({}, True)
+    client = MagicMock()
+    module = MagicMock()
+    roles_to_add = [{"role_arn": "arn:aws:iam::123:role/new", "feature_name": "s3Import"}]
+    roles_to_remove = [{"role_arn": "arn:aws:iam::123:role/old", "feature_name": "s3Export"}]
+
+    result = update_iam_roles(client, module, "my-instance", roles_to_add, roles_to_remove)
+
+    assert result is True
+    assert m_call_method.call_count == 2
+    remove_call = m_call_method.call_args_list[0]
+    assert remove_call[1]["method_name"] == "remove_role_from_db_instance"
+    add_call = m_call_method.call_args_list[1]
+    assert add_call[1]["method_name"] == "add_role_to_db_instance"
+
+
+@patch(mod_api + ".call_method")
+def test__update_iam_roles_add_only(m_call_method):
+    m_call_method.return_value = ({}, True)
+    client = MagicMock()
+    module = MagicMock()
+    roles_to_add = [{"role_arn": "arn:aws:iam::123:role/new", "feature_name": "s3Import"}]
+
+    result = update_iam_roles(client, module, "my-instance", roles_to_add, [])
+
+    assert result is True
+    m_call_method.assert_called_once()
+    assert m_call_method.call_args[1]["method_name"] == "add_role_to_db_instance"

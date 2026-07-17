@@ -10,6 +10,7 @@ import pytest
 
 from ansible_collections.amazon.aws.plugins.module_utils.botocore import HAS_BOTO3
 from ansible_collections.amazon.aws.plugins.module_utils.rds import Boto3ClientMethod
+from ansible_collections.amazon.aws.plugins.module_utils.rds import arg_spec_to_rds_params
 from ansible_collections.amazon.aws.plugins.module_utils.rds import compare_iam_roles
 from ansible_collections.amazon.aws.plugins.module_utils.rds import format_rds_client_method_parameters
 
@@ -17,6 +18,91 @@ if not HAS_BOTO3:
     pytestmark = pytest.mark.skip("test_rds_transformations.py requires the python modules 'boto3' and 'botocore'")
 
 mod_transformations = "ansible_collections.amazon.aws.plugins.module_utils._rds.transformations"
+
+
+# =============================================================================
+# arg_spec_to_rds_params
+# =============================================================================
+
+
+def test__arg_spec_to_rds_params_basic():
+    options = {"db_instance_identifier": "mydb", "master_username": "admin", "tags": {"Name": "mydb"}}
+    result = arg_spec_to_rds_params(options)
+
+    assert result["DBInstanceIdentifier"] == "mydb"
+    assert result["MasterUsername"] == "admin"
+    assert result["Tags"] == {"Name": "mydb"}
+    assert "db_instance_identifier" not in result
+
+
+def test__arg_spec_to_rds_params_iam_replacement():
+    options = {"iam_database_authentication_enabled": True, "tags": {}}
+    result = arg_spec_to_rds_params(options)
+
+    assert "IAMDatabaseAuthenticationEnabled" in result
+    assert "IamDatabaseAuthenticationEnabled" not in result
+
+
+def test__arg_spec_to_rds_params_db_replacement():
+    options = {"db_name": "mydb", "db_cluster_identifier": "mycluster", "tags": {}}
+    result = arg_spec_to_rds_params(options)
+
+    assert "DBName" in result
+    assert "DBClusterIdentifier" in result
+    assert "DbName" not in result
+
+
+def test__arg_spec_to_rds_params_az_replacement():
+    options = {"multi_az": True, "tags": {}}
+    result = arg_spec_to_rds_params(options)
+
+    assert "MultiAZ" in result
+    assert "MultiAz" not in result
+
+
+def test__arg_spec_to_rds_params_ca_replacement():
+    options = {"ca_certificate_identifier": "rds-ca-2019", "tags": {}}
+    result = arg_spec_to_rds_params(options)
+
+    assert "CACertificateIdentifier" in result
+    assert "CaCertificateIdentifier" not in result
+
+
+def test__arg_spec_to_rds_params_kms_key_replacement():
+    options = {"performance_insights_kms_key_id": "arn:aws:kms:us-east-1:123456:key/abc", "tags": {}}
+    result = arg_spec_to_rds_params(options)
+
+    assert "PerformanceInsightsKMSKeyId" in result
+    assert "PerformanceInsightsKmsKeyId" not in result
+
+
+def test__arg_spec_to_rds_params_processor_features_preserved():
+    proc_features = [{"Name": "coreCount", "Value": "4"}]
+    options = {"db_instance_class": "db.m5.large", "processor_features": proc_features, "tags": {"Env": "dev"}}
+    result = arg_spec_to_rds_params(options)
+
+    assert result["ProcessorFeatures"] == proc_features
+    assert result["Tags"] == {"Env": "dev"}
+    assert result["DBInstanceClass"] == "db.m5.large"
+
+
+def test__arg_spec_to_rds_params_tags_none():
+    options = {"db_instance_identifier": "mydb", "tags": None}
+    result = arg_spec_to_rds_params(options)
+
+    assert result["Tags"] is None
+
+
+def test__arg_spec_to_rds_params_empty_options():
+    options = {"tags": {}}
+    result = arg_spec_to_rds_params(options)
+
+    assert result == {"Tags": {}}
+
+
+# =============================================================================
+# format_rds_client_method_parameters
+# =============================================================================
 
 
 @pytest.mark.parametrize(
