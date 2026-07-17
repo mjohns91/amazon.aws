@@ -206,43 +206,43 @@ class TestRdsUtils:
     def test_compare_iam_roles_equal(self):
         existing_list = self.target_role_list
         roles_to_add, roles_to_delete = compare_iam_roles(existing_list, self.target_role_list, purge_roles=False)
-        assert [] == roles_to_add
-        assert [] == roles_to_delete
+        assert roles_to_add == []
+        assert roles_to_delete == []
         roles_to_add, roles_to_delete = compare_iam_roles(existing_list, self.target_role_list, purge_roles=True)
-        assert [] == roles_to_add
-        assert [] == roles_to_delete
+        assert roles_to_add == []
+        assert roles_to_delete == []
 
     def test_compare_iam_roles_empty_arr_existing(self):
         roles_to_add, roles_to_delete = compare_iam_roles([], self.target_role_list, purge_roles=False)
-        assert self.target_role_list == roles_to_add
-        assert [] == roles_to_delete
+        assert roles_to_add == self.target_role_list
+        assert roles_to_delete == []
         roles_to_add, roles_to_delete = compare_iam_roles([], self.target_role_list, purge_roles=True)
-        assert self.target_role_list, roles_to_add
-        assert [] == roles_to_delete
+        assert roles_to_add == self.target_role_list
+        assert roles_to_delete == []
 
     def test_compare_iam_roles_empty_arr_target(self):
         existing_list = self.target_role_list
         roles_to_add, roles_to_delete = compare_iam_roles(existing_list, [], purge_roles=False)
-        assert [] == roles_to_add
-        assert [] == roles_to_delete
+        assert roles_to_add == []
+        assert roles_to_delete == []
         roles_to_add, roles_to_delete = compare_iam_roles(existing_list, [], purge_roles=True)
-        assert [] == roles_to_add
-        assert self.target_role_list == roles_to_delete
+        assert roles_to_add == []
+        assert roles_to_delete == self.target_role_list
 
     def test_compare_iam_roles_different(self):
         existing_list = [{"role_arn": "role_wonn", "feature_name": "s3Export"}]
         roles_to_add, roles_to_delete = compare_iam_roles(existing_list, self.target_role_list, purge_roles=False)
-        assert self.target_role_list == roles_to_add
-        assert [] == roles_to_delete
+        assert roles_to_add == self.target_role_list
+        assert roles_to_delete == []
         roles_to_add, roles_to_delete = compare_iam_roles(existing_list, self.target_role_list, purge_roles=True)
-        assert self.target_role_list == roles_to_add
-        assert existing_list == roles_to_delete
+        assert roles_to_add == self.target_role_list
+        assert roles_to_delete == existing_list
 
         existing_list = self.target_role_list.copy()
         self.target_role_list = [{"role_arn": "role_wonn", "feature_name": "s3Export"}]
         roles_to_add, roles_to_delete = compare_iam_roles(existing_list, self.target_role_list, purge_roles=False)
-        assert self.target_role_list == roles_to_add
-        assert [] == roles_to_delete
+        assert roles_to_add == self.target_role_list
+        assert roles_to_delete == []
         roles_to_add, roles_to_delete = compare_iam_roles(existing_list, self.target_role_list, purge_roles=True)
-        assert self.target_role_list == roles_to_add
-        assert existing_list == roles_to_delete
+        assert roles_to_add == self.target_role_list
+        assert roles_to_delete == existing_list
