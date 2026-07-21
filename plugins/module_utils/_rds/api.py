@@ -122,6 +122,7 @@ def handle_errors(module, exception: Any, method_name: str, parameters: Dict[str
     """
     if not isinstance(exception, ClientError):
         module.fail_json_aws(exception, msg=f"Unexpected failure for method {method_name} with parameters {parameters}")
+        return True
 
     error_code = exception.response["Error"]["Code"]
     error_text = to_text(exception)
@@ -147,6 +148,7 @@ def handle_errors(module, exception: Any, method_name: str, parameters: Dict[str
         exception,
         msg=f"Unable to {get_rds_method_attribute(method_name, module).operation_description}",
     )
+    return True
 
 
 def call_method(client, module, method_name: str, parameters: Dict[str, Any]) -> Tuple[Any, bool]:

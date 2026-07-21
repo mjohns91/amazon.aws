@@ -103,7 +103,6 @@ _RESOURCE_CONFIGS = {
             "add_role_to_db_instance": {"waiter": "role_associated"},
             "remove_role_from_db_instance": {"waiter": "role_disassociated"},
             "promote_read_replica": {"waiter": "read_replica_promoted"},
-            "db_cluster_promoting": {"waiter": "db_cluster_promoting"},
             "restore_db_instance_from_db_snapshot": {"retry_codes": ["InvalidDBSnapshotState"]},
         },
     },
