@@ -239,12 +239,17 @@ def update_iam_roles(
         Returns:
             changed (bool): True if changes were successfully made to DB instance's IAM roles; False if not
     """
+    changed = False
     for role in roles_to_remove:
         params = {"DBInstanceIdentifier": instance_id, "RoleArn": role["role_arn"], "FeatureName": role["feature_name"]}
-        _result, changed = call_method(client, module, method_name="remove_role_from_db_instance", parameters=params)
+        _result, local_changed = call_method(
+            client, module, method_name="remove_role_from_db_instance", parameters=params
+        )
+        changed |= local_changed
     for role in roles_to_add:
         params = {"DBInstanceIdentifier": instance_id, "RoleArn": role["role_arn"], "FeatureName": role["feature_name"]}
-        _result, changed = call_method(client, module, method_name="add_role_to_db_instance", parameters=params)
+        _result, local_changed = call_method(client, module, method_name="add_role_to_db_instance", parameters=params)
+        changed |= local_changed
     return changed
 
 

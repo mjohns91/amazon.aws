@@ -280,9 +280,18 @@ def test_get_snapshot_success(
     m_describe_db_cluster_snapshots, m_describe_db_snapshots, snapshots, snapshot_type, convert_tags, expected
 ):
     client = MagicMock()
-    m_describe_db_cluster_snapshots.return_value = snapshots
-    m_describe_db_snapshots.return_value = snapshots
+    sentinel = [{"WRONG_MOCK": True}]
+    if snapshot_type == "cluster":
+        m_describe_db_cluster_snapshots.return_value = snapshots
+        m_describe_db_snapshots.return_value = sentinel
+    else:
+        m_describe_db_snapshots.return_value = snapshots
+        m_describe_db_cluster_snapshots.return_value = sentinel
     assert get_snapshot(client, "my-snapshot", snapshot_type, convert_tags) == expected
+    if snapshot_type == "cluster":
+        m_describe_db_snapshots.assert_not_called()
+    else:
+        m_describe_db_cluster_snapshots.assert_not_called()
 
 
 def test_get_snapshot_error():
@@ -470,6 +479,31 @@ def test__update_iam_roles_add_and_remove(m_call_method):
     assert remove_call[1]["method_name"] == "remove_role_from_db_instance"
     add_call = m_call_method.call_args_list[1]
     assert add_call[1]["method_name"] == "add_role_to_db_instance"
+
+
+@patch(mod_api + ".call_method")
+def test__update_iam_roles_changed_accumulates(m_call_method):
+    m_call_method.side_effect = [({}, True), ({}, False)]
+    client = MagicMock()
+    module = MagicMock()
+    roles_to_add = [{"role_arn": "arn:aws:iam::123:role/new", "feature_name": "s3Import"}]
+    roles_to_remove = [{"role_arn": "arn:aws:iam::123:role/old", "feature_name": "s3Export"}]
+
+    result = update_iam_roles(client, module, "my-instance", roles_to_add, roles_to_remove)
+
+    assert result is True
+
+
+@patch(mod_api + ".call_method")
+def test__update_iam_roles_no_changes(m_call_method):
+    m_call_method.return_value = ({}, False)
+    client = MagicMock()
+    module = MagicMock()
+
+    result = update_iam_roles(client, module, "my-instance", [], [])
+
+    assert result is False
+    m_call_method.assert_not_called()
 
 
 @patch(mod_api + ".call_method")
